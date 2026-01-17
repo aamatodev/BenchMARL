@@ -25,6 +25,7 @@ if _has_torch_geometric:
     import torch_geometric
     from torch_geometric.transforms import BaseTransform
 
+
     class _RelVel(BaseTransform):
         """Transform that reads graph.vel and writes node1.vel - node2.vel in the edge attributes"""
 
@@ -43,7 +44,6 @@ if _has_torch_geometric:
             else:
                 data.edge_attr = cart
             return data
-
 
 TOPOLOGY_TYPES = {"full", "empty", "from_pos"}
 
@@ -121,18 +121,18 @@ class Gnn(Model):
     """
 
     def __init__(
-        self,
-        topology: str,
-        self_loops: bool,
-        gnn_class: Type[torch_geometric.nn.MessagePassing],
-        gnn_kwargs: Optional[dict],
-        position_key: Optional[str],
-        exclude_pos_from_node_features: Optional[bool],
-        velocity_key: Optional[str],
-        edge_radius: Optional[float],
-        pos_features: Optional[int],
-        vel_features: Optional[int],
-        **kwargs,
+            self,
+            topology: str,
+            self_loops: bool,
+            gnn_class: Type[torch_geometric.nn.MessagePassing],
+            gnn_kwargs: Optional[dict],
+            position_key: Optional[str],
+            exclude_pos_from_node_features: Optional[bool],
+            velocity_key: Optional[str],
+            edge_radius: Optional[float],
+            pos_features: Optional[int],
+            vel_features: Optional[int],
+            **kwargs,
     ):
         self.topology = topology
         self.self_loops = self_loops
@@ -168,17 +168,17 @@ class Gnn(Model):
             {"in_channels": self.input_features, "out_channels": self.output_features}
         )
         self.gnn_supports_edge_attrs = (
-            "edge_dim" in inspect.getfullargspec(gnn_class).args
+                "edge_dim" in inspect.getfullargspec(gnn_class).args
         )
         if (
-            self.position_key is not None or self.velocity_key is not None
+                self.position_key is not None or self.velocity_key is not None
         ) and not self.gnn_supports_edge_attrs:
             warnings.warn(
                 "Position key or velocity key provided but GNN class does not support edge attributes. "
                 "These keys will not be used for computing edge features."
             )
         if (
-            position_key is not None or velocity_key is not None
+                position_key is not None or velocity_key is not None
         ) and self.gnn_supports_edge_attrs:
             gnn_kwargs.update({"edge_dim": self.edge_features})
 
@@ -207,8 +207,8 @@ class Gnn(Model):
         if self.topology == "from_pos" and self.position_key is None:
             raise ValueError("If topology is from_pos, position_key must be provided")
         if (
-            self.position_key is not None
-            and self.exclude_pos_from_node_features is None
+                self.position_key is not None
+                and self.exclude_pos_from_node_features is None
         ):
             raise ValueError(
                 "exclude_pos_from_node_features needs to be specified when position_key is provided"
@@ -258,8 +258,8 @@ class Gnn(Model):
                 f"The second to last input spec dimension should be the number of agents, got {self.input_spec}"
             )
         if (
-            self.output_has_agent_dim
-            and self.output_leaf_spec.shape[-2] != self.n_agents
+                self.output_has_agent_dim
+                and self.output_leaf_spec.shape[-2] != self.n_agents
         ):
             raise ValueError(
                 "If the GNN output has the agent dimension,"
@@ -272,7 +272,7 @@ class Gnn(Model):
             tensordict.get(in_key)
             for in_key in self.in_keys
             if _unravel_key_to_tuple(in_key)[-1]
-            not in (self.position_key, self.velocity_key)
+               not in (self.position_key, self.velocity_key)
         ]
 
         # Retrieve position
@@ -285,7 +285,7 @@ class Gnn(Model):
                 if pos.shape[-1] != self.pos_features - 1:
                     raise ValueError(
                         f"Position key in tensordict is {pos.shape[-1]}-dimensional, "
-                        f"while model was configured with pos_features={self.pos_features-1}"
+                        f"while model was configured with pos_features={self.pos_features - 1}"
                     )
             else:
                 pos = tensordict.get(self._full_position_key)
@@ -328,7 +328,7 @@ class Gnn(Model):
             "edge_index": graph.edge_index,
         }
         if (
-            self.position_key is not None or self.velocity_key is not None
+                self.position_key is not None or self.velocity_key is not None
         ) and self.gnn_supports_edge_attrs:
             forward_gnn_params.update({"edge_attr": graph.edge_attr})
 
@@ -374,9 +374,9 @@ class Gnn(Model):
         for k in keys:
             k_tuple = _unravel_key_to_tuple(k)
             if (
-                k_tuple[-1] == key
-                and self.agent_group in k_tuple
-                and not "next" == k_tuple[0]
+                    k_tuple[-1] == key
+                    and self.agent_group in k_tuple
+                    and not "next" == k_tuple[0]
             ):
                 return k
         raise KeyError(
@@ -385,12 +385,17 @@ class Gnn(Model):
         )
 
 
+import torch
+import torch_geometric
+
+
 def _get_edge_index(topology: str, self_loops: bool, n_agents: int, device: str):
     if topology == "full":
         adjacency = torch.ones(n_agents, n_agents, device=device, dtype=torch.long)
         edge_index, _ = torch_geometric.utils.dense_to_sparse(adjacency)
         if not self_loops:
             edge_index, _ = torch_geometric.utils.remove_self_loops(edge_index)
+
     elif topology == "empty":
         if self_loops:
             edge_index = (
@@ -400,8 +405,38 @@ def _get_edge_index(topology: str, self_loops: bool, n_agents: int, device: str)
             )
         else:
             edge_index = torch.empty((2, 0), device=device, dtype=torch.long)
+
+    elif topology == "star_first":
+        # Node 0 connected to all others (both directions)
+        if n_agents <= 1:
+            edge_index = torch.empty((2, 0), device=device, dtype=torch.long)
+        else:
+            others = torch.arange(1, n_agents, device=device, dtype=torch.long)
+
+            # 0 -> i
+            src1 = torch.zeros_like(others)
+            dst1 = others
+
+            # i -> 0
+            src2 = others
+            dst2 = torch.zeros_like(others)
+
+            # edge_index = torch.stack(
+            #     [torch.cat([src1, src2]),
+            #      torch.cat([dst1, dst2])],
+            #     dim=0
+            # )
+            edge_index = torch.stack([src1, src2], dim=0)
+
+
+        if self_loops:
+            loops = torch.arange(n_agents, device=device, dtype=torch.long)
+            loop_edges = torch.stack([loops, loops], dim=0)
+            edge_index = torch.cat([edge_index, loop_edges], dim=1)
+
     elif topology == "from_pos":
         edge_index = None
+
     else:
         raise ValueError(f"Topology {topology} not supported")
 
@@ -409,12 +444,12 @@ def _get_edge_index(topology: str, self_loops: bool, n_agents: int, device: str)
 
 
 def _batch_from_dense_to_ptg(
-    x: Tensor,
-    edge_index: Optional[Tensor],
-    self_loops: bool,
-    pos: Tensor = None,
-    vel: Tensor = None,
-    edge_radius: Optional[float] = None,
+        x: Tensor,
+        edge_index: Optional[Tensor],
+        self_loops: bool,
+        pos: Tensor = None,
+        vel: Tensor = None,
+        edge_radius: Optional[float] = None,
 ) -> torch_geometric.data.Batch:
     batch_size = prod(x.shape[:-2])
     n_agents = x.shape[-2]
