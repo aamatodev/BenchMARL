@@ -407,27 +407,13 @@ def _get_edge_index(topology: str, self_loops: bool, n_agents: int, device: str)
             edge_index = torch.empty((2, 0), device=device, dtype=torch.long)
 
     elif topology == "star_first":
-        # Node 0 connected to all others (both directions)
         if n_agents <= 1:
             edge_index = torch.empty((2, 0), device=device, dtype=torch.long)
         else:
             others = torch.arange(1, n_agents, device=device, dtype=torch.long)
-
-            # 0 -> i
-            src1 = torch.zeros_like(others)
-            dst1 = others
-
-            # i -> 0
-            src2 = others
-            dst2 = torch.zeros_like(others)
-
-            # edge_index = torch.stack(
-            #     [torch.cat([src1, src2]),
-            #      torch.cat([dst1, dst2])],
-            #     dim=0
-            # )
-            edge_index = torch.stack([src1, src2], dim=0)
-
+            src = others
+            dst = torch.zeros_like(others)
+            edge_index = torch.stack([src, dst], dim=0)  # i -> 0
 
         if self_loops:
             loops = torch.arange(n_agents, device=device, dtype=torch.long)
